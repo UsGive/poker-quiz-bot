@@ -11,6 +11,15 @@ from telegram.ext import (
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# === PROMPT ===
+SYSTEM_PROMPT = (
+    "You are a professional poker coach. Analyze the player's reasoning based on the hand. "
+    "Respond strictly to the point. Keep your answer under 100 words. Avoid filler phrases like 'of course', 'obviously', or 'sure'. "
+    "Be concise, clear, and direct. Focus only on the relevant actions. "
+    "If the opponent might have a flush or straight, but it's not confirmed yet, refer to it as a 'draw' or 'possible draw'. "
+    "Do not speculate beyond the given information."
+)
+
 # === TEST SECTION ===
 questions = [
     {
@@ -63,6 +72,8 @@ user_states = {}
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    if user_id in user_states and user_states[user_id]["current"] < len(questions):
+        return  # предотвратить повторный запуск, если тест уже идёт
     user_states[user_id] = {"current": 0, "score": 0}
     await send_question(update, context)
 
@@ -111,9 +122,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text("✅ Answer recorded! Moving to next question...")
     await send_question(query, context)
 
-# === AI ANALYSIS FORM ===
+# === AI ANALYSIS ===
 AI_STAGE_1, AI_STAGE_2, AI_STAGE_3, AI_STAGE_4, AI_STAGE_5, AI_STAGE_6 = range(6)
-SYSTEM_PROMPT = "You are a professional poker coach. Analyze the player's reasoning. Respond strictly to the point. Keep your answer under 100 words. Avoid filler phrases like 'of course', 'obviously', or 'sure'. Be concise, clear, and direct. Focus only on the relevant actions in the hand."
 
 async def ai_analysis_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
