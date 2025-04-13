@@ -1,5 +1,7 @@
 import logging
 import os
+import time  # уже должен быть импорт os и logging
+last_start_time = {}  # словарь для отслеживания времени запуска
 from openai import OpenAI
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import (
@@ -72,9 +74,14 @@ user_states = {}
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    # Удаляем условие, которое мешает запуску теста
+    now = time.time()
+
+    # Защита от двойного запуска: максимум 1 раз в 2 секунды
+    if user_id in last_start_time and now - last_start_time[user_id] < 2:
+        return
+    last_start_time[user_id] = now
+
     user_states[user_id] = {"current": 0, "score": 0}
-    await update.message.reply_text("📍 Starting the quiz...")  # Чтобы видеть, что функция вызвалась
     await send_question(update, context)
 
 async def send_question(update_or_query, context: ContextTypes.DEFAULT_TYPE):
