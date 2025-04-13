@@ -150,7 +150,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Build bot
 def main():
-    app = ApplicationBuilder().token("8026264603:AAG2fCVqTNfEI1umev-kILrLKb94y_dDh44").build()
+    app = ApplicationBuilder().token(os.getenv("BOT_TOKEN")).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex("^Try again$"), start))
     app.add_handler(CallbackQueryHandler(button))
