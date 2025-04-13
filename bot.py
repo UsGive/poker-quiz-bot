@@ -188,7 +188,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Build bot
 conv_handler = ConversationHandler(
-    entry_points=[MessageHandler(filters.TEXT & filters.Regex("^AI Analysis$"), ai_analysis_start)],
+    entry_points=[MessageHandler(filters.TEXT & filters.Regex("^Ask Alex$"), ai_analysis_start)],
     states={
         AI_STAGE: [MessageHandler(filters.TEXT & (~filters.COMMAND), ai_analysis_process)],
     },
@@ -201,7 +201,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex("^Try again$"), start))
     app.add_handler(CallbackQueryHandler(button))
     app.add_handler(conv_handler)
-    app.add_handler(MessageHandler(filters.TEXT & filters.Regex("^Ask Alex$"), start))
+    app.add_handler(MessageHandler(filters.TEXT & filters.Regex("^AI Analysis$"), start))
     app.run_polling()
 
 # Entry point
