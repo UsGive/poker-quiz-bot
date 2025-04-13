@@ -1,7 +1,11 @@
 import logging
 import os
+import openai
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
+from telegram.ext import (
+    ApplicationBuilder, CommandHandler, CallbackQueryHandler,
+    MessageHandler, ContextTypes, filters, ConversationHandler
+)
 
 # Enable logging
 logging.basicConfig(
@@ -62,6 +66,41 @@ questions = [
 final_video = "videos/Part 5 Explanation.mp4"
 
 user_states = {}
+
+# Conversation state for AI Analysis
+AI_STAGE = range(1)
+
+SYSTEM_PROMPT = (
+    "You are a professional poker coach. Analyze the player's reasoning concisely and clearly. "
+    "Keep the answer under 100 words. Avoid introductions like 'Of course' or 'Sure'. "
+    "Speak in the first person as a coach. Do not include generic phrases, focus strictly on the hand."
+)
+
+# AI analysis handlers
+async def ai_analysis_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🧠 Please describe your thought process on this hand:")
+    return AI_STAGE
+
+async def ai_analysis_process(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_input = update.message.text
+    await update.message.reply_text("✅ Got it! I'm sending this to GPT for analysis...")
+
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": user_input}
+            ],
+            temperature=0.7,
+            max_tokens=300
+        )
+        reply = response["choices"][0]["message"]["content"]
+        await update.message.reply_text(reply)
+    except Exception as e:
+        await update.message.reply_text(f"⚠️ GPT error: {e}")
+
+    return ConversationHandler.END
 
 # Start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -130,8 +169,6 @@ async def send_question(update_or_query, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(inline_keyboard)
     )
 
-    # (Removed redundant Menu keyboard setup)
-
 # Handle answer
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -149,12 +186,20 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_question(query, context)
 
 # Build bot
+conv_handler = ConversationHandler(
+    entry_points=[MessageHandler(filters.TEXT & filters.Regex("^AI Analysis$"), ai_analysis_start)],
+    states={
+        AI_STAGE: [MessageHandler(filters.TEXT & (~filters.COMMAND), ai_analysis_process)],
+    },
+    fallbacks=[]
+)
+
 def main():
     app = ApplicationBuilder().token(os.getenv("BOT_TOKEN")).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex("^Try again$"), start))
     app.add_handler(CallbackQueryHandler(button))
-    app.add_handler(MessageHandler(filters.TEXT & filters.Regex("^AI Analysis$"), start))
+    app.add_handler(conv_handler)
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex("^Ask Alex$"), start))
     app.run_polling()
 
