@@ -72,9 +72,9 @@ user_states = {}
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    if user_id in user_states and user_states[user_id]["current"] < len(questions):
-        return  # предотвратить повторный запуск, если тест уже идёт
+    # Удаляем условие, которое мешает запуску теста
     user_states[user_id] = {"current": 0, "score": 0}
+    await update.message.reply_text("📍 Starting the quiz...")  # Чтобы видеть, что функция вызвалась
     await send_question(update, context)
 
 async def send_question(update_or_query, context: ContextTypes.DEFAULT_TYPE):
