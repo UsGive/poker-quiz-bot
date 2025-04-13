@@ -7,14 +7,11 @@ from telegram.ext import (
     MessageHandler, ContextTypes, filters, ConversationHandler
 )
 
-# Enable logging
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
+# Logging
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Quiz content with associated video filenames
+# === TEST SECTION ===
 questions = [
     {
         "stage": "Preflop",
@@ -61,55 +58,14 @@ questions = [
         }
     }
 ]
-
-# Path to final explanation video
 final_video = "videos/Part 5 Explanation.mp4"
-
 user_states = {}
 
-# Conversation state for AI Analysis
-AI_STAGE = range(1)
-
-SYSTEM_PROMPT = (
-    "You are a professional poker coach. Analyze the player's reasoning concisely and clearly. "
-    "Keep the answer under 100 words. Avoid introductions like 'Of course' or 'Sure'. "
-    "Speak in the first person as a coach. Do not include generic phrases, focus strictly on the hand."
-)
-
-# AI analysis handlers
-async def ai_analysis_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🧠 Please describe your thought process on this hand:")
-    return AI_STAGE
-
-async def ai_analysis_process(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_input = update.message.text
-    await update.message.reply_text("✅ Got it! I'm sending this to AI for analysis...")
-
-    try:
-        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        response = client.chat.completions.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_input}
-            ],
-            temperature=0.7,
-            max_tokens=300
-        )
-        reply = response.choices[0].message.content
-        await update.message.reply_text(reply)
-    except Exception as e:
-        await update.message.reply_text(f"⚠️ AI error: {e}")
-
-    return ConversationHandler.END
-
-# Start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_states[user_id] = {"current": 0, "score": 0}
     await send_question(update, context)
 
-# Send next question with video
 async def send_question(update_or_query, context: ContextTypes.DEFAULT_TYPE):
     if isinstance(update_or_query, Update):
         user_id = update_or_query.effective_user.id
@@ -122,55 +78,26 @@ async def send_question(update_or_query, context: ContextTypes.DEFAULT_TYPE):
     idx = state["current"]
 
     if idx >= len(questions):
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text=f"✅ Quiz complete! You scored {state['score']} out of 40."
-        )
-        user_states[user_id] = {"current": 0, "score": 0}  # Reset for next run
+        await context.bot.send_message(chat_id=chat_id, text=f"✅ Quiz complete! You scored {state['score']} out of 40.")
+        user_states[user_id] = {"current": 0, "score": 0}
         if os.path.exists(final_video):
-            try:
-                await context.bot.send_video(
-                    chat_id=chat_id,
-                    video=open(final_video, 'rb'),
-                    caption="📽️ Here's the expert explanation for this hand."
-                )
-            except Exception as e:
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text=f"⚠️ Explanation video failed to load. Error: {e}"
-                )
+            await context.bot.send_video(chat_id=chat_id, video=open(final_video, 'rb'), caption="📽️ Here's the expert explanation for this hand.")
         await context.bot.send_message(
             chat_id=chat_id,
-            text="Try again 👇",
+            text="Choose an option 👇",
             reply_markup=ReplyKeyboardMarkup(
-                [[KeyboardButton("Try again"), KeyboardButton("AI Analysis")],
-                 [KeyboardButton("Ask Alex")]], resize_keyboard=True, one_time_keyboard=False, selective=True
+                [[KeyboardButton("Try again"), KeyboardButton("Ask Alex")],
+                 [KeyboardButton("AI Analysis")]], resize_keyboard=True
             )
         )
         return
 
     q = questions[idx]
-
-    # Send video
     if os.path.exists(q["video"]):
-        await context.bot.send_video(
-            chat_id=chat_id,
-            video=open(q["video"], 'rb'),
-            caption=f"{q['stage']} — Watch this first."
-        )
+        await context.bot.send_video(chat_id=chat_id, video=open(q["video"], 'rb'), caption=f"{q['stage']} — Watch this first.")
+    inline_keyboard = [[InlineKeyboardButton(f"{k}) {v['text']}", callback_data=k)] for k, v in q["options"].items()]
+    await context.bot.send_message(chat_id=chat_id, text=f"{q['stage']}\n\n{q['question']}", reply_markup=InlineKeyboardMarkup(inline_keyboard))
 
-    # Send question
-    inline_keyboard = [
-        [InlineKeyboardButton(f"{key}) {value['text']}", callback_data=key)]
-        for key, value in q["options"].items()
-    ]
-    await context.bot.send_message(
-        chat_id=chat_id,
-        text=f"{q['stage']}\n\n{q['question']}",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard)
-    )
-
-# Handle answer
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -178,19 +105,79 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state = user_states[user_id]
     idx = state["current"]
     answer = query.data
-
     score = questions[idx]["options"][answer]["score"]
     state["score"] += score
     state["current"] += 1
-
     await query.edit_message_text("✅ Answer recorded! Moving to next question...")
     await send_question(query, context)
 
-# Build bot
+# === AI ANALYSIS FORM ===
+AI_STAGE_1, AI_STAGE_2, AI_STAGE_3, AI_STAGE_4, AI_STAGE_5, AI_STAGE_6 = range(6)
+SYSTEM_PROMPT = "You are a professional poker coach. Analyze the player's reasoning. Respond strictly to the point. Keep your answer under 100 words. Avoid filler phrases like 'of course', 'obviously', or 'sure'. Be concise, clear, and direct. Focus only on the relevant actions in the hand."
+
+async def ai_analysis_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.clear()
+    await update.message.reply_text("Step 1 of 6:\nWhat's your position and hand?\n\n🃏 Example: Button, Th Ts")
+    return AI_STAGE_1
+
+async def ai_analysis_stage_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['position_hand'] = update.message.text
+    await update.message.reply_text("Step 2 of 6:\nEnter stacks in BBs.\n\n💰 Example: Hero 100bb, Villain 80bb")
+    return AI_STAGE_2
+
+async def ai_analysis_stage_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['stacks'] = update.message.text
+    await update.message.reply_text("Step 3 of 6:\nDescribe preflop actions.\n\n♠️ Example: Hero raises to 2bb, BB calls")
+    return AI_STAGE_3
+
+async def ai_analysis_stage_3(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['preflop'] = update.message.text
+    await update.message.reply_text("Step 4 of 6:\nDescribe flop actions.\n\n♦️ Example: Flop Jc 5s 3h — Hero bets 3bb, Villain calls")
+    return AI_STAGE_4
+
+async def ai_analysis_stage_4(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['flop'] = update.message.text
+    await update.message.reply_text("Step 5 of 6:\nDescribe turn and river actions.\n\n🃓 Example: Turn Qh — check-check, River 6c — Hero checks, Villain bets 10bb, Hero folds")
+    return AI_STAGE_5
+
+async def ai_analysis_stage_5(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['turn_river'] = update.message.text
+    await update.message.reply_text("Step 6 of 6:\nOptional: Add any extra context (result, notes, etc.)\n\n📌 Example: Opponent showed AK, pot was 40bb")
+    return AI_STAGE_6
+
+async def ai_analysis_stage_6(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['notes'] = update.message.text
+    await update.message.reply_text("✅ Got it! Sending to AI for analysis...")
+    full_input = (
+        f"Position and Hand: {context.user_data['position_hand']}\n"
+        f"Stacks: {context.user_data['stacks']}\n"
+        f"Preflop: {context.user_data['preflop']}\n"
+        f"Flop: {context.user_data['flop']}\n"
+        f"Turn and River: {context.user_data['turn_river']}\n"
+        f"Extra Notes: {context.user_data['notes']}"
+    )
+    try:
+        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": full_input}],
+            temperature=0.7, max_tokens=300
+        )
+        reply = response.choices[0].message.content
+        await update.message.reply_text(reply)
+    except Exception as e:
+        await update.message.reply_text(f"⚠️ AI error: {e}")
+    return ConversationHandler.END
+
 conv_handler = ConversationHandler(
-    entry_points=[MessageHandler(filters.TEXT & filters.Regex("^Ask Alex$"), ai_analysis_start)],
+    entry_points=[MessageHandler(filters.TEXT & filters.Regex("^AI Analysis$"), ai_analysis_start)],
     states={
-        AI_STAGE: [MessageHandler(filters.TEXT & (~filters.COMMAND), ai_analysis_process)],
+        AI_STAGE_1: [MessageHandler(filters.TEXT & (~filters.COMMAND), ai_analysis_stage_1)],
+        AI_STAGE_2: [MessageHandler(filters.TEXT & (~filters.COMMAND), ai_analysis_stage_2)],
+        AI_STAGE_3: [MessageHandler(filters.TEXT & (~filters.COMMAND), ai_analysis_stage_3)],
+        AI_STAGE_4: [MessageHandler(filters.TEXT & (~filters.COMMAND), ai_analysis_stage_4)],
+        AI_STAGE_5: [MessageHandler(filters.TEXT & (~filters.COMMAND), ai_analysis_stage_5)],
+        AI_STAGE_6: [MessageHandler(filters.TEXT & (~filters.COMMAND), ai_analysis_stage_6)],
     },
     fallbacks=[]
 )
@@ -201,9 +188,8 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex("^Try again$"), start))
     app.add_handler(CallbackQueryHandler(button))
     app.add_handler(conv_handler)
-    app.add_handler(MessageHandler(filters.TEXT & filters.Regex("^AI Analysis$"), start))
+    app.add_handler(MessageHandler(filters.TEXT & filters.Regex("^Ask Alex$"), start))
     app.run_polling()
 
-# Entry point
 if __name__ == '__main__':
     main()
