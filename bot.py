@@ -1,6 +1,6 @@
 import logging
 import os
-import openai
+from openai import OpenAI
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, CallbackQueryHandler,
@@ -83,10 +83,11 @@ async def ai_analysis_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def ai_analysis_process(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text
-    await update.message.reply_text("✅ Got it! I'm sending this to GPT for analysis...")
+    await update.message.reply_text("✅ Got it! I'm sending this to AI for analysis...")
 
     try:
-        response = openai.ChatCompletion.create(
+        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        response = client.chat.completions.create(
             model="gpt-4",
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
@@ -95,10 +96,10 @@ async def ai_analysis_process(update: Update, context: ContextTypes.DEFAULT_TYPE
             temperature=0.7,
             max_tokens=300
         )
-        reply = response["choices"][0]["message"]["content"]
+        reply = response.choices[0].message.content
         await update.message.reply_text(reply)
     except Exception as e:
-        await update.message.reply_text(f"⚠️ GPT error: {e}")
+        await update.message.reply_text(f"⚠️ AI error: {e}")
 
     return ConversationHandler.END
 
